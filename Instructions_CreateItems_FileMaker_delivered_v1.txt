@@ -1,0 +1,15 @@
+1. pip install python-fmrest
+
+2. pip install PyFileMaker
+
+3. Extract fmrest.rar and replace files with these files 
+"SAME AS BEFORE".
+
+4. 
+(a)    Goto FmResultset.py add this condition on line 112   						
+	if rec == 'SpecRecordID': done = True 
+
+(b)    After adding condition on line 112 replace line 113 with this line
+	if rec != 'SpecRecordID' and rec['RECORDID'] == subrecordDict['RECORDID']:
+
+

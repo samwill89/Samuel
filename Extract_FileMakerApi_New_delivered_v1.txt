@@ -1,0 +1,130 @@
+# coding: iso-8859-15
+
+# Fields extracted are:
+# Revit ID, Item ID, Item Name, Location, Quantity, Vendor, Manufacturer, Model#, Description, Website, Other, Image
+
+# Set the client and project number for the find - this will normally come from an external source
+import base64  # Base64 conversions
+import requests  # To request image url request and similar requests
+import fmrest  # To Login into FileMaker
+
+projectid = '18-0012'
+client = '99999'
+
+def getRow(col):
+    if col and col != '':
+        return str(col.encode("utf-8")).replace('\r', '¶').replace(',', ' ').replace('\n',' ') + " ,"
+    else:
+        return " ,"
+
+try:
+    # This allows us to look up specs by project ID
+    fms = fmrest.Server('https://prod01.thesmartdesigner.com',
+                        user='tss',
+                        password='2504B',
+                        database='V6_Data_' + client,
+                        layout='|Specs')
+    fms.login()
+
+    # Create a second handle for looking up the graphics.
+    fms2 = fmrest.Server('https://prod01.thesmartdesigner.com',
+                         user='tss',
+                         password='2504B',
+                         database='V6_Data_' + client,
+                         layout='|Graphics')
+    fms2.login()
+
+    find_query = [{'Specs_Projects::Project Number': projectid}]
+    order_by = [{'fieldName': 'z1020_CRMRecordID', 'sortOrder': 'ascend'}]
+    foundset = fms.find(find_query, sort=order_by, limit=99999)
+
+    # gets all the record found by query
+    record = foundset[0]
+
+    # Set Headers of Columns
+    dataToInsert = 'RECORDID, Revit_ID, Project_Number, ItemNumber, ItemName, Location, Quantity, Vendor, Manufacturer, Model#, Description, Website, Other, Image'
+    x = 1
+
+    for record in foundset:
+        #  We may, or may not have an image.  If we do, get a URL.
+        images = record.portal_Spec_to_Graphics
+        url = ''
+
+        if any(images):
+            imageid = images[0]['Spec_to_Graphics::GraphicImage_ID']
+            image_query = [{'Graphics::ImageRecordID': imageid}]
+            imagerecords = fms2.find(image_query)
+            imagerecord = imagerecords[0]
+            url = imagerecords[0]['File']
+
+        # currentrow gives us data of current iteration
+        currentrow = ''
+        column = record['recordId']
+        currentrow += str(column) + " ,"
+        column = record['z1020_CRMRecordID']
+        currentrow += str(column) + " ,"
+        column = record['specs_PROJECTS::Project Number']
+        currentrow += str(column) + " ,"
+        column = record['ItemNumber']
+        currentrow += str(column.encode("utf-8")) + " ,"
+        column = record['ItemName']
+        currentrow += str(column.encode("utf-8")) + " ,"
+        column = record['Area']
+        currentrow += getRow(column)
+        column = record['Quantity Estimate']
+
+        if column and column != '':
+            currentrow += str(column).replace('\r', '¶').replace(',', ' ') + " ,"
+        else:
+            currentrow += " ,"
+
+        column = record['specs_PRODUCTS::Source Company']
+        currentrow += getRow(column)
+        column = record['specs_PRODUCTS::Manufacturer']
+        currentrow += getRow(column)
+        column = record['specs_ATTRIBUTES||Model||::Attribute_Value']
+        currentrow += getRow(column)
+        column = record['specs_PRODUCTS::SpecFabrication'].replace('\r', '')
+        currentrow += getRow(column)
+        column = record['specs_ATTRIBUTES||Website||::Attribute_Value']
+        currentrow += getRow(column)
+        column = record['specs_products_ATTRIBUTES::zs_Attribute_Value_SectionSeparator']
+        currentrow += getRow(column)
+
+        base64_string = ''
+
+        if url and url != '':
+            try:
+                base64_string = str(base64.b64encode(requests.get(url).content))
+            except Exception, e:
+                print('Exception Thrown while retrieving image', e)
+
+        currentrow += base64_string
+        dataToInsert += '\n' + currentrow
+
+        print('\n\n\n', x, '-> Revit ID:', record['z1020_CRMRecordID'],
+              '\nItem Number:', record['ItemNumber'],
+              '\nItem Name:', record['ItemName'],
+              '\nLocation:', record['Area'].replace(',', ' '),
+              '\nQuantity:', record['Quantity Estimate'],
+              '\nVendor:', record['specs_PRODUCTS::Source Company'].replace(',', ' '),
+              '\nManufacturer:', record['specs_PRODUCTS::Manufacturer'].replace(',', ' '),
+              '\nModel #:', record['specs_ATTRIBUTES||Model||::Attribute_Value'].replace(',', ' '),
+              '\nDescription:', record['specs_PRODUCTS::SpecFabrication'].replace('\r', '').replace(',', ' '),
+              '\nWebsite:', record['specs_ATTRIBUTES||Website||::Attribute_Value'].replace(',', ' '),
+              '\nOther:',
+              record['specs_products_ATTRIBUTES::zs_Attribute_Value_SectionSeparator'].replace(',',' '),
+              '\nImage:', url
+              )
+        x += 1
+    # close out nicely.
+    fms.logout()
+    fms2.logout()
+
+    # write data into the file, if no file is found it will create file
+    with open(r'C:\Users\HP Elitebook Win 10\Desktop\Smart Schedule.txt', 'w+') as file:
+        file.writelines(dataToInsert)
+
+except Exception, e:
+    print('Error :', e)
+quit()

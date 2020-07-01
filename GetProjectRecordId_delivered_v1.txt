@@ -1,0 +1,19 @@
+from PyFileMaker import FMServer # pip install PyFileMaker
+client = '99999'
+fmp = FMServer('https://tss:2504B@prod01.thesmartdesigner.com', 'V6_Data_' + client, '|Projects')
+projects = fmp.doFindAll()
+project_name_number_recordid_list = []
+
+count = 0
+for project in projects:
+    obj = {
+        "Project_Number_and_Name": project.Project_Number_and_Name,
+        "RecordID": project.RecordID
+    }
+    project_name_number_recordid_list.insert(count, obj)
+    count +=1
+
+for item in project_name_number_recordid_list:
+    print "ProjectNumber and Name: " + item['Project_Number_and_Name'] + " RecordID: " + item['RecordID']
+
+print "All got printed"

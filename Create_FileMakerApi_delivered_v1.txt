@@ -1,0 +1,59 @@
+import fmrest # To Extract Records
+from PyFileMaker import FMServer # To Insert Records
+
+token = open(r'C:\Users\HP Elitebook Win 10\Desktop\Smart Schedule.txt', 'r')
+linesdata = token.readlines()
+
+projectid = '18-0012'   #Specify this to extract records from specific project
+project_record_id = 1404 # Specify this to insert record to specific project
+client = '99999'
+
+try:
+    fm = FMServer('https://tss:2504B@prod01.thesmartdesigner.com', 'V6_Data_' + client, '|Specs')                       # FileMakerServer
+    fms = fmrest.Server('https://prod01.thesmartdesigner.com',                                                          # FileMakerRest
+                        user='tss',
+                        password='2504B',
+                        database='V6_Data_' + client,
+                        layout='|Specs')
+    fms.login()
+
+    find_query = [{'Specs_Projects::Project Number': projectid}]
+    order_by = [{'fieldName': 'z1020_CRMRecordID', 'sortOrder': 'ascend'}]
+    foundset = fms.find(find_query, sort=order_by, limit=99999)                                                         # Extract Records
+
+    item_project_numbers = [{}]
+    count = 0
+    for record in foundset:
+        item_project = str(record['ItemNumber'].strip()) + " " + str(record['specs_PROJECTS::Project Number'].strip())
+        item_project_numbers.insert(count, item_project)
+        count += 1
+
+    count = 0
+    for x in linesdata:
+        item = {}
+        if count > 0:
+            valuearr = x.split(',')
+            if valuearr[0].strip().isdigit():
+                item_project = valuearr[3].strip() + " " + valuearr[2].strip()
+                if item_project_numbers.__contains__(item_project) == False:
+                    record = {
+                        'ItemNumber': str(valuearr[3]).strip(),
+                        'ItemName': str(valuearr[4]).strip(),
+                        'Area': str(valuearr[5]).strip(),
+                        'Quantity Estimate': int(valuearr[6]) if valuearr[6].strip() != '' else 0,
+                        'specs_PRODUCTS::Source Company': str(valuearr[7]).strip(),
+                        'specs_PRODUCTS::Manufacturer': str(valuearr[8]).strip(),
+                        'ProjectRecordID': project_record_id,
+                        'specs_PRODUCTS::SpecFabrication': str(valuearr[10]).strip()
+                        }
+
+                    try:
+                        result = fm.doNew(WHAT=record)
+                    except Exception, ex:
+                        print ('An Error occured while inserting Item: ', valuearr[3], ' error: ', ex)
+        else:
+            count += 1
+
+except Exception, e:
+    print('Error :', e)
+
