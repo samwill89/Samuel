@@ -1,0 +1,48 @@
+from fmrest import dataAPI
+import base64
+
+fm = dataAPI.DataAPIv1('prod01.thesmartdesigner.com')
+fm.authenticate('V6_Data_99999', 'tss', '2504B')
+data = {
+ "query":[ {"specs_PROJECTS::Project Number" : "18-0012"}],
+}
+
+foundset = fm.find_records('|Specs', data)
+data_to_insert = ''
+# path = r'C:\Users\user\Downloads\dep.png'
+# with open(path, "rb") as img_file:
+#     base64_string = base64.b64encode((img_file.read()))
+
+i = 0;
+header_str = 'RECORDID, ItemNumber, ItemName, ImageRecordId1, ImageUrl1, ImageRecordId1, ImageUrl2, ImageRecordId2, ImageUrl3, ImageRecordId4, ImageUrl4, ImageRecordId5, ImageUrl5, ImageRecordId6, ImageUrl6, ImageRecordId7, ImageUrl7, ImageRecordId8, ImageUrl8, ImageRecordId9, ImageUrl9'
+data_to_insert = header_str
+
+for item in foundset['response']['data']:
+    header_data = item['recordId'] + ", " + item['fieldData']['ItemNumber'] + ", " + item['fieldData']['ItemName']
+    item_graphics = item['portalData']['Spec_to_Graphics']
+    item_graphics_length = len(item_graphics)
+
+    if item_graphics_length > 0:
+        for x in range(item_graphics_length):
+            graphic_id = item_graphics[x]['Spec_to_Graphics::GraphicImage_ID']
+            image_query = {"query":[{"Graphics::ImageRecordID": graphic_id}]}
+            image_record_details = fm.find_records('|Graphics', image_query)
+            record_id = image_record_details['response']['data'][0]['recordId']
+            image_details = image_record_details['response']['data'][0]
+            header_data += ", " + image_details['recordId'] + ", " + str(image_details['fieldData']['File'])
+            # with open(path, 'rb') as file:
+            #     result = fm.container_upload('|Graphics', record_id, 'File', file)
+
+    # fill empty images in file
+    for x in range(9 - item_graphics_length):
+        header_data += ", "
+    for x in range(9 - item_graphics_length):
+            header_data += ", "
+
+    data_to_insert += '\n' + header_data
+    i = i + 1
+    print i
+
+with open(r'C:\Users\user\Desktop\Image_Form_Data.txt', 'w+') as file:
+    encoded_str = data_to_insert.encode('ascii', 'ignore')
+    file.writelines(str(encoded_str))
