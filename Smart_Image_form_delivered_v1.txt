@@ -1,0 +1,239 @@
+from tkinter import *
+from tkscrolledframe import ScrolledFrame
+from tkinter import filedialog
+from PIL import ImageTk, Image
+import requests
+import cStringIO
+from fmrest import dataAPI
+import base64
+
+def create_image(image_url, base64_str, recordId, product_id):
+    image_url = image_url
+    base64_string = base64_str
+    if image_url != "":
+        imagedata = cStringIO.StringIO(base64.b64decode(base64_string))
+        im = Image.open(imagedata)
+    else:
+        im = Image.open(r'D:\Donor\Samuel\TestImages\select.png')
+
+    resized = im.resize((185, 94), Image.ANTIALIAS)
+    tkimage = ImageTk.PhotoImage(resized)
+    myvar = Button(frame, image=tkimage, compound=LEFT)
+    myvar.image = tkimage
+    myvar.recordId = recordId
+    myvar.product_id = product_id
+    myvar.configure(command=lambda b=myvar: selectfile(b))
+    return myvar
+
+## open dialog box from here, and get image path and base64_string from here while passing button itself as a parameter
+def selectfile(p1):
+    selectedfile = filedialog.askopenfilename(filetypes=[("", '.jpg; .png')])
+    if selectedfile:
+        try:
+            with open(selectedfile, "rb") as img_file:
+                base64_string = base64.b64encode(img_file.read())
+
+            row = int(p1.grid_info()['row'])
+            column = int(p1.grid_info()['column'])
+
+            if p1.recordId != 0:
+                with open(selectedfile, 'rb') as file:
+                    result = fm.container_upload('|Graphics', str(p1.recordId), 'File', file)
+            else:
+                recordId = save_new_image(selectedfile, str(p1.product_id))
+
+            im = Image.open(selectedfile)
+            resized = im.resize((185, 94), Image.ANTIALIAS)
+            tkimage = ImageTk.PhotoImage(resized)
+            p1.image = tkimage
+            if p1.recordId == 0:
+                p1.recordId = recordId
+            p1.config(image=tkimage)
+        except Exception as e:
+            print('Exception thrown', e)
+    else:
+        print('No File is selected')
+
+def save_data(datatosave):
+    print('changedfilelines', datatosave)
+    with open(newfilepath, 'w+') as file:
+        file.writelines(changedfilelines)
+    quit()
+
+def save_new_image(selectedfile, product_id):
+    to_update_product = {"fieldData": {"ItemName": 'New Space Catapult Original1'},
+                         "portalData": {"graphicsportal": [{
+                             "products||SPECGRAPHICS::PositionNumber": 1,
+                         }]}
+                         }
+    edited_record = fm.edit_record('|Products', product_id, to_update_product)
+    record_id = edited_record['response']['newPortalRecordInfo'][0]['recordId']
+
+    data = {
+        "fieldData": {
+            "GraphicURL": "",
+        }
+    }
+    create_graphics = fm.create_record('|Graphics', data=data)
+    graphic_record_id = create_graphics['response']['recordId']
+    with open(selectedfile, 'rb') as file:
+        result = fm.container_upload('|Graphics', graphic_record_id, 'File', file)
+    get_record = fm.get_record('|Graphics', graphic_record_id)
+    file = get_record['response']['data'][0]['fieldData']['File']
+    to_update_product = {
+        "fieldData": {},
+        "portalData": {"graphicsportal": [{
+            'recordId': record_id,
+            'products||specgraphics||GRAPHICS::File': file,
+        }]}
+    }
+    edited_record = fm.edit_record('|Products', product_id, to_update_product)
+    itemm = fm.get_record('|Specs', item_record_id)
+    graphic_new_id = itemm['response']['data'][0]['portalData']['Spec_to_Graphics'][0][
+        'Spec_to_Graphics::GraphicImage_ID']
+    data = {
+        "query": [{"ImageRecordID": graphic_new_id}],
+    }
+    with open(selectedfile, 'rb') as file:
+        result = fm.container_upload('|Graphics', str(int(graphic_record_id) + 1), 'File', file)
+    return graphic_record_id
+
+def cancelall():
+    global changedfilelines
+    global originalfilelines
+    changedfilelines = originalfilelines
+    quit()
+
+def onFrameConfigure(canvas):
+    canvas.configure(scrollregion=canvas.bbox("all"))
+
+def set_item(selected_record_id, product_id):
+    records = fm.get_record('|Specs', selected_record_id, args={'portal': '["Spec_to_Graphics"]', '_limit.Spec_to_Graphics': 50})
+    for item in records['response']['data']:
+        item_graphics = item['portalData']['Spec_to_Graphics']
+        item_graphics_length = len(item_graphics)
+        i = 9
+        rowcount = 2
+        columncount = 0
+
+        myvar = Label(item_frame, text="ItemNumber", width=12, font=("bold", 11), bg="white", pady=5)
+        myvar.grid(row=1, column=0)
+        myvar = Label(item_frame, text=item['fieldData']['ItemNumber'], width=14, font=("bold", 9), bg="white", pady=5)
+        myvar.grid(row=1, column=1)
+        myvar = Label(item_frame, text="ItemName", width=12, font=("bold", 11), bg="white", pady=5)
+        myvar.grid(row=1, column=2)
+        myvar = Label(item_frame, text=item['fieldData']['ItemName'], width=35, font=("bold", 9), bg="white", pady=5)
+        myvar.grid(row=1, column=3)
+        if item_graphics_length > 0:
+            for x in range(item_graphics_length):
+                if x < 9 :
+                    base64_string = ''
+                    graphic_id = item_graphics[x]['Spec_to_Graphics::GraphicImage_ID']
+                    image_query = {"query": [{"Graphics::ImageRecordID": graphic_id}]}
+                    image_record_details = fm.find_records('|Graphics', image_query)
+                    image_details = image_record_details['response']['data'][0]
+                    image_url = image_details['fieldData']['File']
+                    if not image_url:
+                        print "no image found"
+                    else:
+                        base64_string = str(base64.b64encode(requests.get(image_url).content))
+                    myvar = create_image(image_url, base64_string, image_details['recordId'], product_id)
+                    myvar.grid(row=rowcount, column=columncount, pady=(0, 7))
+                    if columncount < 3:
+                        columncount = columncount + 1
+                    if columncount != 0 and columncount % 3 == 0:
+                        rowcount = rowcount + 1
+                    if columncount >= 3:
+                        columncount = 0
+            i = i - item_graphics_length
+            while i > 0:
+                myvar = create_image('', '', 0, product_id)
+                myvar.grid(row=rowcount, column=columncount, pady=(0, 7))
+                if columncount < 3:
+                    columncount = columncount + 1
+                if columncount != 0 and columncount % 3 == 0:
+                    rowcount = rowcount + 1
+                if columncount >= 3:
+                    columncount = 0
+                i = i - 1
+
+def get_item(*args):
+    new_product_id = ''
+    for i, j in item_number_dict.items():
+        if j == option_menu.get():
+            selected_record_id = i
+
+    item_record_id = selected_record_id
+    for data in linesdata:
+        if data is not "":
+            item_row = data.split(',')
+            if item_row[0].strip() == selected_record_id:
+                new_product_id = item_row[3].strip()
+                break
+    set_item(selected_record_id, new_product_id)
+
+tk = Tk()
+newfilepath = 'C:\Users\user\Desktop\Smart_Image_Form_Data.txt'
+##Copying File data Work, line 33 - 85 is for update and insert new records in the new file
+count = 0
+mylist = []
+## Loop to update and insert data in New File path
+
+##Form Design and implementation Work here
+fm = dataAPI.DataAPIv1('prod01.thesmartdesigner.com')
+fm.authenticate('V6_Data_99999', 'tss', '2504B')
+
+token = open(newfilepath, 'r')
+linesdata = token.readlines()
+item_number_dict = {}
+rowcount = 0
+item_record_id = ''
+product_id = ''
+
+for items in linesdata:
+    if rowcount > 0:
+        item_row = items.split(',')
+        if rowcount == 1:
+            item_record_id = item_row[0].strip()
+            product_id = item_row[3].strip()
+        item_number_dict[item_row[0].strip()] = (item_row[1].strip())
+    rowcount = rowcount + 1
+COLUMNS = 4
+image_count = 0
+
+iteration = 0
+rowcount = 0
+columncount = 0
+tk.title("Smart Image Form")
+tk.geometry("600x500")
+tk.resizable(0,0)
+header_frame = Frame(tk)
+label_0 = Label(header_frame, text = "Smart Image Manager", width=18, font=("bold", 13)).grid(row=0, column=2, padx = 60)
+myimg = Image.open(r'D:\Donor\Samuel\TestImages\logo.jpg')
+myimg = myimg.resize((60,60))
+logo = ImageTk.PhotoImage(myimg)
+label_1 = Label(header_frame, image = logo, borderwidth=1, relief="solid").grid(row=0, column=1, padx=50)
+option_menu = StringVar(header_frame)
+option_menu.set(item_number_dict.keys()[0])
+OptionMenu(header_frame, option_menu, *item_number_dict.values()).grid(row=0, column=3, padx = 60)
+option_menu.trace("w", get_item)
+header_frame.pack()
+item_frame = Frame(tk)
+item_frame.pack()
+sf = ScrolledFrame(tk, width=580, height=340)
+sf.pack(side="top", expand=0, fill="both")
+# Bind the arrow keys and scroll wheel
+sf.bind_arrow_keys(tk)
+sf.bind_scroll_wheel(tk)
+
+# Create a frame within the ScrolledFrame
+frame = sf.display_widget(Frame)
+frame.configure(bg="white")
+set_item(item_record_id, product_id)
+
+##code to add Done, Cancel button
+button_frame = Frame(tk)
+button_frame.pack()
+# done_btn = Button(button_frame, text="Done", font=("bold", 14), width=12, command=lambda b=changedfilelines: save_data(b)).grid(row=0, column=3, pady=20, padx=10)
+cancel_btn = Button(button_frame, text="Cancel", font=("bold", 14), width=12, command=cancelall).grid(row=0, column=4)
+tk.mainloop()

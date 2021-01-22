@@ -1,0 +1,30 @@
+from fmrest import dataAPI
+
+fm = dataAPI.DataAPIv1('prod01.thesmartdesigner.com')
+fm.authenticate('V6_Data_99999', 'tss', '2504B')
+data = {
+ "query":[ {"specs_PROJECTS::Project Number" : "18-0012"}], "limit": "99999"
+}
+
+foundset = fm.find_records('|Specs', data)
+data_to_insert = ''
+
+i = 0;
+header_str = 'RECORDID, ItemNumber, ItemName, ProductRecordID'
+data_to_insert = header_str
+
+for item in foundset['response']['data']:
+    product_RecordID = item['fieldData']['specs_PRODUCTS::RecordID']
+    data = {
+        "query": [{"RecordID": product_RecordID}]
+    }
+    product = fm.find_records('|Products', data)
+    product_record_id = product['response']['data'][0]['recordId']
+    header_data = item['recordId'] + ", " + item['fieldData']['ItemNumber'] + ", " + item['fieldData']['ItemName']  + ", " + product_record_id
+    data_to_insert += '\n' + header_data
+    i = i + 1
+    print i
+
+with open(r'C:\Users\user\Desktop\Smart_Image_Form_Data.txt', 'w+') as file:
+    encoded_str = data_to_insert.encode('ascii', 'ignore')
+    file.writelines(str(encoded_str))
